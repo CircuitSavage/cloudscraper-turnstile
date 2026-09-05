@@ -31,11 +31,14 @@ def build_turnstile_payload(
     cdata: Optional[str] = None,
     action: Optional[str] = None,
     pagedata: Optional[str] = None,
+    app_id: Optional[str] = None,
 ) -> dict:
     """Build the JSON body for a Turnstile solve.
 
     ``proxy`` and the optional ``cData`` / ``action`` / ``pagedata`` fields are
-    omitted entirely when not provided, per the Peak contract.
+    omitted entirely when not provided, per the Peak contract. ``app_id`` is the
+    optional Peak app id used for developer revenue share; when set it is sent
+    as ``appId``. It only affects who is credited, never the solve result.
     """
     payload = {
         "task_type": TASK_TURNSTILE,
@@ -50,17 +53,29 @@ def build_turnstile_payload(
         payload["action"] = action
     if pagedata:
         payload["pagedata"] = pagedata
+    if app_id:
+        payload["appId"] = app_id
     return payload
 
 
-def build_cloudflare5s_payload(url: str, proxy: Optional[str] = None) -> dict:
-    """Build the JSON body for a 5s interstitial solve (no sitekey)."""
+def build_cloudflare5s_payload(
+    url: str,
+    proxy: Optional[str] = None,
+    app_id: Optional[str] = None,
+) -> dict:
+    """Build the JSON body for a 5s interstitial solve (no sitekey).
+
+    ``app_id`` is the optional Peak app id for developer revenue share; when set
+    it is sent as ``appId`` and never changes the solve result.
+    """
     payload = {
         "task_type": TASK_CLOUDFLARE_5S,
         "url": url,
     }
     if proxy:
         payload["proxy"] = proxy
+    if app_id:
+        payload["appId"] = app_id
     return payload
 
 
@@ -73,6 +88,7 @@ class PeakClient:
         api_url: str = DEFAULT_API_URL,
         proxy: Optional[str] = None,
         timeout: float = 180.0,
+        app_id: Optional[str] = None,
     ) -> None:
         if not api_key:
             raise PeakError(
@@ -84,6 +100,9 @@ class PeakClient:
         self.api_url = api_url
         self.proxy = proxy
         self.timeout = timeout
+        # Optional Peak app id for developer revenue share; forwarded as appId
+        # on every solve. Only affects who is credited, never the solve result.
+        self.app_id = app_id
 
     def _post(self, payload: dict) -> dict:
         """Send the payload to Peak and return the parsed JSON response.
@@ -126,6 +145,7 @@ class PeakClient:
         cdata: Optional[str] = None,
         action: Optional[str] = None,
         pagedata: Optional[str] = None,
+        app_id: Optional[str] = None,
     ) -> str:
         """Solve a Turnstile challenge and return the token string.
 
@@ -138,6 +158,7 @@ class PeakClient:
             cdata=cdata,
             action=action,
             pagedata=pagedata,
+            app_id=app_id or self.app_id,
         )
         data = self._check(self._post(payload))
         token = data.get("token")
@@ -146,7 +167,7 @@ class PeakClient:
         return token
 
     def solve_cloudflare5s(
-        self, url: str, proxy: Optional[str] = None
+        self, url: str, proxy: Optional[str] = None, app_id: Optional[str] = None
     ) -> dict:
         """Solve the 5s interstitial.
 
@@ -154,5 +175,7 @@ class PeakClient:
         map (with ``cf_clearance``) and optionally ``headers`` / ``user_agent``
         to reuse on the crawl session.
         """
-        payload = build_cloudflare5s_payload(url, proxy=proxy or self.proxy)
+        payload = build_cloudflare5s_payload(
+            url, proxy=proxy or self.proxy, app_id=app_id or self.app_id
+        )
         return self._check(self._post(payload))

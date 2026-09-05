@@ -25,14 +25,20 @@ from .peak import (
     build_cloudflare5s_payload,
     build_turnstile_payload,
 )
-from .scraper import CloudScraper, create_scraper, resolve_api_key
+from .scraper import (
+    CloudScraper,
+    create_scraper,
+    resolve_api_key,
+    resolve_app_id,
+)
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 __all__ = [
     "create_scraper",
     "CloudScraper",
     "resolve_api_key",
+    "resolve_app_id",
     "PeakClient",
     "PeakError",
     "build_turnstile_payload",

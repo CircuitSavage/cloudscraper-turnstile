@@ -25,6 +25,7 @@ from cloudscraper_turnstile import (
     PeakClient,
     create_scraper,
     resolve_api_key,
+    resolve_app_id,
 )
 from cloudscraper_turnstile.detect import (
     extract_sitekey,
@@ -32,7 +33,10 @@ from cloudscraper_turnstile.detect import (
     is_interstitial_challenge,
     is_turnstile_challenge,
 )
-from cloudscraper_turnstile.peak import build_turnstile_payload
+from cloudscraper_turnstile.peak import (
+    build_cloudflare5s_payload,
+    build_turnstile_payload,
+)
 
 TARGET_URL = "https://protected.example.com/checkout"
 SITEKEY = "0x4AAAAAAABkMYinukE8nzYS"
@@ -221,6 +225,89 @@ class PayloadTests(unittest.TestCase):
     def test_turnstile_payload_proxy(self):
         payload = build_turnstile_payload(SITEKEY, TARGET_URL, proxy="http://p:1")
         self.assertEqual(payload["proxy"], "http://p:1")
+
+    def test_turnstile_payload_appid_absent_by_default(self):
+        payload = build_turnstile_payload(SITEKEY, TARGET_URL)
+        self.assertNotIn("appId", payload)
+
+    def test_turnstile_payload_appid_present_when_set(self):
+        payload = build_turnstile_payload(SITEKEY, TARGET_URL, app_id="app_123")
+        self.assertEqual(payload["appId"], "app_123")
+
+    def test_turnstile_payload_byte_identical_when_appid_unset(self):
+        # An unset app_id must not perturb the payload at all.
+        self.assertEqual(
+            build_turnstile_payload(SITEKEY, TARGET_URL, app_id=None),
+            build_turnstile_payload(SITEKEY, TARGET_URL),
+        )
+
+    def test_cloudflare5s_payload_appid(self):
+        self.assertNotIn("appId", build_cloudflare5s_payload(TARGET_URL))
+        payload = build_cloudflare5s_payload(TARGET_URL, app_id="app_123")
+        self.assertEqual(payload["appId"], "app_123")
+
+
+# ---------------------------------------------------------------------------
+# app id resolution and end-to-end forwarding
+# ---------------------------------------------------------------------------
+class AppIdResolutionTests(unittest.TestCase):
+    def setUp(self):
+        self._saved = os.environ.pop("PEAK_APP_ID", None)
+
+    def tearDown(self):
+        if self._saved is not None:
+            os.environ["PEAK_APP_ID"] = self._saved
+        else:
+            os.environ.pop("PEAK_APP_ID", None)
+
+    def test_explicit_app_id(self):
+        self.assertEqual(resolve_app_id(app_id="app_explicit"), "app_explicit")
+
+    def test_captcha_dict_app_id(self):
+        cap = {"provider": "peak", "app_id": "app_from_captcha"}
+        self.assertEqual(resolve_app_id(captcha=cap), "app_from_captcha")
+
+    def test_env_fallback(self):
+        os.environ["PEAK_APP_ID"] = "app_from_env"
+        self.assertEqual(resolve_app_id(), "app_from_env")
+
+    def test_precedence_explicit_over_captcha_over_env(self):
+        os.environ["PEAK_APP_ID"] = "app_env"
+        cap = {"provider": "peak", "app_id": "app_cap"}
+        self.assertEqual(resolve_app_id("app_exp", cap), "app_exp")
+        self.assertEqual(resolve_app_id(None, cap), "app_cap")
+        self.assertEqual(resolve_app_id(None, None), "app_env")
+
+    def test_unset_app_id_is_none(self):
+        self.assertIsNone(resolve_app_id())
+
+    def test_app_id_forwarded_to_peak_payload(self):
+        transport = scripted_transport(
+            FakeResponse(TARGET_URL, 403, TURNSTILE_HTML),
+            FakeResponse(TARGET_URL, 200, REAL_HTML),
+        )
+        with mock.patch.object(requests.Session, "request", transport):
+            with mock.patch.object(
+                PeakClient, "_post", return_value=TURNSTILE_OK
+            ) as mock_post:
+                scraper = create_scraper(api_key="pk_test", app_id="app_123")
+                scraper.get(TARGET_URL)
+        payload = mock_post.call_args[0][0]
+        self.assertEqual(payload["appId"], "app_123")
+
+    def test_app_id_absent_from_payload_when_unset(self):
+        transport = scripted_transport(
+            FakeResponse(TARGET_URL, 403, TURNSTILE_HTML),
+            FakeResponse(TARGET_URL, 200, REAL_HTML),
+        )
+        with mock.patch.object(requests.Session, "request", transport):
+            with mock.patch.object(
+                PeakClient, "_post", return_value=TURNSTILE_OK
+            ) as mock_post:
+                scraper = create_scraper(api_key="pk_test")
+                scraper.get(TARGET_URL)
+        payload = mock_post.call_args[0][0]
+        self.assertNotIn("appId", payload)
 
 
 # ---------------------------------------------------------------------------

@@ -19,6 +19,10 @@ API_KEY = os.environ.get("PEAK_API_KEY", "pk_your_api_key")
 def main():
     # create_scraper mirrors cloudscraper's signature. The key can also come
     # from the PEAK_API_KEY env var, so create_scraper() alone is enough.
+    #
+    # Optional: pass app_id="app_..." (or set PEAK_APP_ID) to earn 5% of every
+    # solve as credit via Peak's developer revenue share. It only changes who is
+    # credited, never the solve result. Details at https://peak.fo/earn.
     scraper = cloudscraper.create_scraper(api_key=API_KEY)
 
     # Use it exactly like a requests.Session. If the page is a Cloudflare

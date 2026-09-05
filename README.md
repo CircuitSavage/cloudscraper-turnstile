@@ -122,6 +122,17 @@ scraper = cloudscraper.create_scraper(
 
 If you set `scraper.proxies` the requests way instead, that proxy is used for the solve automatically.
 
+### Earn with your app ID
+
+Pass your Peak app id and you earn 5% of every solve this tool makes, paid as solve credit. The `app_id` is optional and only changes who is credited, never whether or how fast a challenge is solved. Create one at [peak.fo/dashboard/developer](https://peak.fo/dashboard/developer); details at [peak.fo/earn](https://peak.fo/earn).
+
+```python
+scraper = cloudscraper.create_scraper(
+    api_key="pk_your_api_key",
+    app_id="app_your_app_id",   # optional; or set PEAK_APP_ID in the env
+)
+```
+
 ## Compatibility
 
 | cloudscraper API | Status in cloudscraper-turnstile |

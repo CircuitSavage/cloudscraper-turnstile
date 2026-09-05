@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "cloudscraper-turnstile"
-version = "0.1.0"
+version = "0.2.0"
 description = "cloudscraper drop-in that actually solves Cloudflare Turnstile and the 5s interstitial via the Peak API. Subclasses requests.Session; swap two lines and your existing scraper works."
 readme = "README.md"
 requires-python = ">=3.8"

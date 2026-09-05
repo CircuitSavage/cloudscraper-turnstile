@@ -24,6 +24,7 @@ __all__ = [
     "CloudScraper",
     "create_scraper",
     "resolve_api_key",
+    "resolve_app_id",
     "PeakError",
 ]
 
@@ -52,6 +53,23 @@ def resolve_api_key(api_key=None, captcha=None) -> Optional[str]:
         if key:
             return key
     return os.environ.get("PEAK_API_KEY")
+
+
+def resolve_app_id(app_id=None, captcha=None) -> Optional[str]:
+    """Resolve the optional Peak app id. Precedence: explicit > captcha dict > env.
+
+    The app id is used for Peak's developer revenue share: when present it is
+    forwarded to the solve endpoint so the app owner earns credit. It never
+    changes the solve result. Mirrors :func:`resolve_api_key`, and reads the
+    ``PEAK_APP_ID`` environment variable as a fallback.
+    """
+    if app_id:
+        return app_id
+    if isinstance(captcha, dict):
+        aid = captcha.get("app_id") or captcha.get("appId") or captcha.get("appid")
+        if aid:
+            return aid
+    return os.environ.get("PEAK_APP_ID")
 
 
 def _parse_challenge_form(html: str, page_url: str):
@@ -91,6 +109,7 @@ class CloudScraper(requests.Session):
         max_solve_attempts: int = 3,
         debug: bool = False,
         peak_client: Optional[PeakClient] = None,
+        app_id: Optional[str] = None,
         **kwargs,
     ) -> None:
         # requests.Session.__init__ takes no arguments; swallow every extra
@@ -102,6 +121,9 @@ class CloudScraper(requests.Session):
         self.max_solve_attempts = max_solve_attempts
         self.debug = debug
         self._peak_client = peak_client
+        # Optional Peak app id for developer revenue share; forwarded to Peak on
+        # every solve. Only affects who is credited, never the solve result.
+        self.peak_app_id = app_id
         # Kept only for introspection / drop-in parity; not otherwise used.
         self.cloudscraper_kwargs = dict(kwargs)
 
@@ -112,7 +134,9 @@ class CloudScraper(requests.Session):
         until a challenge actually needs solving."""
         if self._peak_client is None:
             self._peak_client = PeakClient(
-                api_key=self.peak_api_key, proxy=self._peak_proxy()
+                api_key=self.peak_api_key,
+                proxy=self._peak_proxy(),
+                app_id=self.peak_app_id,
             )
         return self._peak_client
 
@@ -217,6 +241,7 @@ def create_scraper(
     interpreter=None,
     debug=False,
     max_solve_attempts=3,
+    app_id=None,
     **kwargs,
 ):
     """Create a :class:`CloudScraper`, mirroring ``cloudscraper.create_scraper``.
@@ -227,13 +252,19 @@ def create_scraper(
 
     The Peak API key is resolved with precedence
     explicit ``api_key`` > ``captcha`` dict > ``PEAK_API_KEY`` env.
+
+    ``app_id`` is optional. When set (or via ``PEAK_APP_ID``), it is forwarded
+    to Peak on every solve so the app owner earns revenue-share credit; it never
+    changes the solve result. See https://peak.fo/earn.
     """
     resolved_key = resolve_api_key(api_key, captcha)
+    resolved_app_id = resolve_app_id(app_id, captcha)
     scraper = CloudScraper(
         api_key=resolved_key,
         proxy=proxy,
         max_solve_attempts=max_solve_attempts,
         debug=debug,
+        app_id=resolved_app_id,
         browser=browser,
         delay=delay,
         interpreter=interpreter,
